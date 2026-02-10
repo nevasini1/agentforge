@@ -1,0 +1,93 @@
+tools:
+  - name: lookup_order
+    description: "Look up an order by order ID. Returns order status, items, and shipping info."
+    parameters:
+      order_id: "string - The order ID to look up"
+    mock_responses:
+      default:
+        order_id: "ORD-12345"
+        status: "shipped"
+        items: ["Blue Widget x2", "Red Gadget x1"]
+        shipping: {"carrier": "FedEx", "tracking": "FX-99887766", "eta": "2025-01-15"}
+      '{"order_id": "ORD-99999"}':
+        error: "Order not found"
+      '{"order_id": "ORD-55555"}':
+        order_id: "ORD-55555"
+        status: "processing"
+        items: ["Green Thingamajig x3"]
+        shipping: null
+
+  - name: issue_refund
+    description: "Issue a refund for an order. Returns confirmation with refund amount."
+    parameters:
+      order_id: "string - The order ID to refund"
+      reason: "string - Reason for the refund"
+    mock_responses:
+      default:
+        status: "refund_initiated"
+        refund_amount: "$49.99"
+        estimated_days: 5
+
+  - name: check_inventory
+    description: "Check inventory/stock level for a product by name or SKU."
+    parameters:
+      product: "string - Product name or SKU"
+    mock_responses:
+      default:
+        product: "Blue Widget"
+        in_stock: true
+        quantity: 142
+        warehouse: "US-West"
+
+scenarios:
+  - id: "cs_easy_order_status"
+    description: "Customer asks about their order status — straightforward lookup"
+    user_message: "Hi, can you check the status of my order ORD-12345? I placed it last week."
+    difficulty: "easy"
+    user_persona: "Friendly customer, just wants a quick update"
+    initial_state:
+      customer_name: "Alice"
+      order_id: "ORD-12345"
+    success_criteria:
+      - "Agent calls lookup_order with correct order ID"
+      - "Agent reports the order status to the customer"
+    expected_tool_calls:
+      - "lookup_order"
+    expected_outcome: "Agent tells customer the order is shipped with FedEx tracking"
+
+  - id: "cs_medium_refund"
+    description: "Customer wants a refund — agent must look up order first, then process refund"
+    user_message: "I received my order ORD-12345 but the Blue Widget is broken. I want a refund please."
+    difficulty: "medium"
+    user_persona: "Frustrated but polite customer with a damaged item"
+    initial_state:
+      customer_name: "Bob"
+      order_id: "ORD-12345"
+      issue: "damaged_item"
+    success_criteria:
+      - "Agent calls lookup_order to verify the order"
+      - "Agent calls issue_refund with appropriate reason"
+      - "Agent confirms refund details to customer"
+    expected_tool_calls:
+      - "lookup_order"
+      - "issue_refund"
+    expected_outcome: "Agent looks up order, processes refund for damaged item, confirms to customer"
+
+  - id: "cs_hard_multi_step"
+    description: "Customer wants to reorder an out-of-stock item from a previous order — requires checking order, inventory, and handling the out-of-stock case"
+    user_message: "I loved the Green Thingamajig from my order ORD-55555. I want to buy 5 more. Can you check if they're in stock and help me reorder?"
+    difficulty: "hard"
+    user_persona: "Enthusiastic repeat customer wanting to reorder"
+    initial_state:
+      customer_name: "Charlie"
+      order_id: "ORD-55555"
+      desired_quantity: 5
+    success_criteria:
+      - "Agent calls lookup_order to find the original order"
+      - "Agent calls check_inventory for the product"
+      - "Agent provides accurate stock information"
+      - "Agent helps with reorder or explains next steps"
+    expected_tool_calls:
+      - "lookup_order"
+      - "check_inventory"
+    expected_outcome: "Agent checks order history, verifies inventory, and guides customer on reordering"

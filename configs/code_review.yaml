@@ -1,0 +1,221 @@
+tools:
+  - name: fetch_pr
+    description: "Fetch a pull request by ID. Returns the diff, description, author, and file changes."
+    parameters:
+      pr_id: "string - The pull request ID"
+    mock_responses:
+      default:
+        pr_id: "PR-101"
+        title: "Add user search endpoint"
+        author: "dev-alice"
+        description: "Adds a new /api/users/search endpoint"
+        status: "open"
+        files_changed: 3
+        ci_status: "passing"
+        diff: |
+          +@app.get("/api/users/search")
+          +def search_users(query: str):
+          +    users = db.query(User).filter(User.name.contains(query)).all()
+          +    return {"users": [u.to_dict() for u in users]}
+
+      '{"pr_id": "PR-102"}':
+        pr_id: "PR-102"
+        title: "Fix pagination offset bug"
+        author: "dev-bob"
+        description: "Fixes off-by-one error in pagination"
+        status: "open"
+        files_changed: 1
+        ci_status: "passing"
+        diff: |
+          -    offset = page * page_size
+          +    offset = (page - 1) * page_size
+
+      '{"pr_id": "PR-103"}':
+        pr_id: "PR-103"
+        title: "Add admin dashboard"
+        author: "dev-charlie"
+        description: "New admin dashboard with user management"
+        status: "open"
+        files_changed: 5
+        ci_status: "failing"
+        diff: |
+          +@app.get("/admin/dashboard")
+          +def admin_dashboard():
+          +    stats = get_system_stats()
+          +    return render_template("admin.html", stats=stats)
+
+      '{"pr_id": "PR-104"}':
+        pr_id: "PR-104"
+        title: "Add user deletion endpoint"
+        author: "dev-dave"
+        description: "Endpoint to delete users by ID"
+        status: "open"
+        files_changed: 2
+        ci_status: "passing"
+        diff: |
+          +@app.delete("/api/users/{user_id}")
+          +def delete_user(user_id: str):
+          +    query = f"DELETE FROM users WHERE id = '{user_id}'"
+          +    db.execute(query)
+          +    return {"status": "deleted"}
+
+      '{"pr_id": "PR-105"}':
+        pr_id: "PR-105"
+        title: "Refactor auth module and add logging"
+        author: "dev-eve"
+        description: "Large refactor of auth + new logging. Some files are clean, others have issues."
+        status: "open"
+        files_changed: 8
+        ci_status: "passing"
+        diff: |
+          --- auth/login.py (CLEAN)
+          +def login(username: str, password: str):
+          +    user = authenticate(username, password)
+          +    if user:
+          +        return create_session(user)
+          +    raise AuthError("Invalid credentials")
+
+          --- auth/tokens.py (HAS ISSUE)
+          +def create_token(user_id):
+          +    token = jwt.encode({"user_id": user_id, "exp": "never"}, SECRET_KEY)
+          +    return token
+
+          --- logging/logger.py (CLEAN)
+          +import logging
+          +logger = logging.getLogger("app")
+          +handler = logging.StreamHandler()
+          +logger.addHandler(handler)
+
+          --- auth/permissions.py (HAS ISSUE)
+          +def check_permission(user, resource):
+          +    # TODO: implement actual permission check
+          +    return True
+
+  - name: post_comment
+    description: "Post a review comment on a specific line or file in the PR."
+    parameters:
+      pr_id: "string - The PR ID"
+      file: "string - The file to comment on"
+      comment: "string - The review comment"
+    mock_responses:
+      default:
+        status: "comment_posted"
+
+  - name: approve_pr
+    description: "Approve the pull request."
+    parameters:
+      pr_id: "string - The PR ID"
+      message: "string - Optional approval message"
+    mock_responses:
+      default:
+        status: "approved"
+
+  - name: request_changes
+    description: "Request changes on the PR with a summary of what needs fixing."
+    parameters:
+      pr_id: "string - The PR ID"
+      summary: "string - Summary of required changes"
+    mock_responses:
+      default:
+        status: "changes_requested"
+
+  - name: check_ci
+    description: "Check CI/CD pipeline status for a PR."
+    parameters:
+      pr_id: "string - The PR ID"
+    mock_responses:
+      default:
+        pr_id: "PR-101"
+        ci_status: "passing"
+        checks: [{"name": "lint", "status": "pass"}, {"name": "tests", "status": "pass"}]
+      '{"pr_id": "PR-103"}':
+        pr_id: "PR-103"
+        ci_status: "failing"
+        checks: [{"name": "lint", "status": "pass"}, {"name": "tests", "status": "fail", "error": "test_admin_auth failed: AssertionError"}]
+
+scenarios:
+  - id: "cr_easy_approve"
+    description: "Simple PR that just needs approval — CI passing, clean code"
+    user_message: "Please review PR-102. It's a simple pagination bug fix."
+    difficulty: "easy"
+    user_persona: "dev-bob, experienced developer, small targeted fix"
+    initial_state:
+      pr_id: "PR-102"
+    success_criteria:
+      - "Agent fetches the PR to review the diff"
+      - "Agent approves the PR since it's a clean fix"
+    expected_tool_calls:
+      - "fetch_pr"
+      - "approve_pr"
+    expected_outcome: "Agent reviews the diff, sees it's a correct off-by-one fix, and approves"
+
+  - id: "cr_medium_bug"
+    description: "PR with a minor bug — agent should catch it and request changes"
+    user_message: "Can you review PR-101? It adds a user search endpoint."
+    difficulty: "medium"
+    user_persona: "dev-alice, junior developer, new endpoint"
+    initial_state:
+      pr_id: "PR-101"
+    success_criteria:
+      - "Agent fetches the PR"
+      - "Agent identifies potential issues (no pagination, no input validation)"
+      - "Agent requests changes or posts comments about the issues"
+    expected_tool_calls:
+      - "fetch_pr"
+      - "request_changes"
+    expected_outcome: "Agent catches missing pagination/validation and requests changes"
+
+  - id: "cr_medium_ci_fail"
+    description: "PR where CI is failing — agent should check CI before reviewing code"
+    user_message: "Please review PR-103. It adds a new admin dashboard."
+    difficulty: "medium"
+    user_persona: "dev-charlie, wants a quick review"
+    initial_state:
+      pr_id: "PR-103"
+    success_criteria:
+      - "Agent fetches the PR"
+      - "Agent checks CI status"
+      - "Agent mentions CI failure in review"
+      - "Agent requests changes citing CI failure"
+    expected_tool_calls:
+      - "fetch_pr"
+      - "check_ci"
+      - "request_changes"
+    expected_outcome: "Agent discovers CI is failing and requests fixes before code review"
+
+  - id: "cr_hard_security"
+    description: "PR with a SQL injection vulnerability — agent must catch it"
+    user_message: "Review PR-104 please. Dave added a user deletion endpoint."
+    difficulty: "hard"
+    user_persona: "dev-dave, uses string formatting for SQL queries"
+    initial_state:
+      pr_id: "PR-104"
+    success_criteria:
+      - "Agent fetches the PR"
+      - "Agent identifies the SQL injection vulnerability"
+      - "Agent requests changes specifically mentioning SQL injection"
+      - "Agent suggests using parameterized queries"
+    expected_tool_calls:
+      - "fetch_pr"
+      - "post_comment"
+      - "request_changes"
+    expected_outcome: "Agent catches SQL injection in delete_user and requests parameterized queries"
+
+  - id: "cr_hard_mixed"
+    description: "Large PR with mixed quality — some files good, some bad"
+    user_message: "Eve submitted PR-105, a big auth refactor with logging. Please do a thorough review."
+    difficulty: "hard"
+    user_persona: "dev-eve, experienced developer but rushed this PR"
+    initial_state:
+      pr_id: "PR-105"
+    success_criteria:
+      - "Agent fetches the PR"
+      - "Agent identifies the token expiry issue (exp='never' is bad)"
+      - "Agent identifies the permissions bypass (always returns True)"
+      - "Agent posts targeted comments on the problematic files only"
+      - "Agent requests changes with specific issues listed"
+    expected_tool_calls:
+      - "fetch_pr"
+      - "post_comment"
+      - "request_changes"
+    expected_outcome: "Agent reviews each file, comments on tokens.py and permissions.py issues, approves clean files"

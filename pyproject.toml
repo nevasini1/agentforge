@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "agentforge"
+version = "0.1.0"
+description = "Co-evolutionary framework for training robust AI agents via self-play"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "transformers",
+    "accelerate",
+    "requests",
+    "pydantic>=2.0",
+    "pyyaml",
+    "numpy",
+    "rich",
+    "typer",
+]
+
+[project.scripts]
+agentforge = "agentforge.cli:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
